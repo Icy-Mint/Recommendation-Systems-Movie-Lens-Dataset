@@ -141,12 +141,27 @@ def evaluate_model(
     """
     results = []
     
+    # Calculate MRR once per user (doesn't depend on K)
+    mrr_scores = []
+    for user_id in predictions:
+        if user_id not in ground_truth:
+            continue
+        
+        recommended = predictions[user_id]
+        relevant = ground_truth[user_id]
+        
+        if len(relevant) == 0:
+            continue
+        
+        mrr_scores.append(mean_reciprocal_rank(recommended, relevant))
+    
+    mrr_value = np.mean(mrr_scores) if mrr_scores else 0.0
+    
     for k in k_values:
         precision_scores = []
         recall_scores = []
         ndcg_scores = []
         hit_rate_scores = []
-        mrr_scores = []
         
         for user_id in predictions:
             if user_id not in ground_truth:
@@ -162,7 +177,6 @@ def evaluate_model(
             recall_scores.append(recall_at_k(recommended, relevant, k))
             ndcg_scores.append(ndcg_at_k(recommended, relevant, k))
             hit_rate_scores.append(hit_rate_at_k(recommended, relevant, k))
-            mrr_scores.append(mean_reciprocal_rank(recommended, relevant))
         
         results.append({
             'K': k,
@@ -170,7 +184,7 @@ def evaluate_model(
             'Recall@K': np.mean(recall_scores) if recall_scores else 0.0,
             'NDCG@K': np.mean(ndcg_scores) if ndcg_scores else 0.0,
             'Hit Rate@K': np.mean(hit_rate_scores) if hit_rate_scores else 0.0,
-            'MRR': np.mean(mrr_scores) if mrr_scores else 0.0,
+            'MRR': mrr_value,
         })
     
     return pd.DataFrame(results)

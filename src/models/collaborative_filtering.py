@@ -32,6 +32,7 @@ class UserBasedCF:
         self.user_similarity = None
         self.user_ids = None
         self.item_ids = None
+        self.user_id_to_idx = None
     
     def fit(self, ratings: pd.DataFrame):
         """
@@ -46,6 +47,9 @@ class UserBasedCF:
         
         user_id_map = {uid: idx for idx, uid in enumerate(self.user_ids)}
         item_id_map = {iid: idx for idx, iid in enumerate(self.item_ids)}
+        
+        # Store mapping for efficient lookup
+        self.user_id_to_idx = user_id_map
         
         rows = ratings['user_id'].map(user_id_map)
         cols = ratings['item_id'].map(item_id_map)
@@ -72,13 +76,21 @@ class UserBasedCF:
         Returns:
             List of recommended item IDs
         """
-        if user_id not in self.user_ids:
+        if user_id not in self.user_id_to_idx:
             return []
         
-        user_idx = self.user_ids.index(user_id)
+        user_idx = self.user_id_to_idx[user_id]
         
-        # Get k most similar users
-        similar_users = np.argsort(self.user_similarity[user_idx])[::-1][:self.k_neighbors]
+        # Get k most similar users using argpartition for better performance
+        if self.k_neighbors < len(self.user_similarity[user_idx]):
+            similar_users_idx = np.argpartition(
+                self.user_similarity[user_idx], 
+                -self.k_neighbors
+            )[-self.k_neighbors:]
+            # Sort the top-k for consistent ordering
+            similar_users = similar_users_idx[np.argsort(self.user_similarity[user_idx][similar_users_idx])[::-1]]
+        else:
+            similar_users = np.argsort(self.user_similarity[user_idx])[::-1][:self.k_neighbors]
         
         # Get items the user hasn't rated
         user_ratings = self.user_item_matrix[user_idx]
@@ -126,6 +138,7 @@ class ItemBasedCF:
         self.item_similarity = None
         self.user_ids = None
         self.item_ids = None
+        self.user_id_to_idx = None
     
     def fit(self, ratings: pd.DataFrame):
         """
@@ -140,6 +153,9 @@ class ItemBasedCF:
         
         user_id_map = {uid: idx for idx, uid in enumerate(self.user_ids)}
         item_id_map = {iid: idx for idx, iid in enumerate(self.item_ids)}
+        
+        # Store mapping for efficient lookup
+        self.user_id_to_idx = user_id_map
         
         rows = ratings['user_id'].map(user_id_map)
         cols = ratings['item_id'].map(item_id_map)
@@ -166,10 +182,10 @@ class ItemBasedCF:
         Returns:
             List of recommended item IDs
         """
-        if user_id not in self.user_ids:
+        if user_id not in self.user_id_to_idx:
             return []
         
-        user_idx = self.user_ids.index(user_id)
+        user_idx = self.user_id_to_idx[user_id]
         user_ratings = self.user_item_matrix[user_idx]
         
         # Get items the user has rated
